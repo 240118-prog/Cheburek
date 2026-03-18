@@ -16,23 +16,24 @@
 </head>
 <body>
 
-<div class="container">
-    <h3>Панель управления данными</h3>
-    <input type="text" id="name" placeholder="Имя профиля">
-    <input type="email" id="email" placeholder="Рабочий Email">
-    <button id="mainBtn">Опубликовать в облако</button>
-</div>
+    <div class="container">
+        <h3>Панель управления данными</h3>
+        <input type="text" id="name" placeholder="Имя профиля">
+        <input type="email" id="email" placeholder="Рабочий Email">
+        <button id="mainBtn">Опубликовать в облако</button>
+    </div>
 
-<div id="feed" style="width: 100%; max-width: 500px;"></div>
+    <div id="feed" style="width: 100%; max-width: 500px;"></div>
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-    import { 
-        getFirestore, collection, addDoc, query, orderBy, onSnapshot,
-        serverTimestamp, updateDoc, doc, increment 
-    } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js&quot;;
+        import {
+            getFirestore, collection, addDoc, query, orderBy, onSnapshot,
+            serverTimestamp, updateDoc, doc, increment
+        } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js&quot;;
 
-
+        // КОНФИГУРАЦИЯ
+       
     const firebaseConfig = {
   apiKey: "AIzaSyAfcBZdit4BInJ92TasZtwb8aaUiKeyg0o",
   authDomain: "varenik-248cb.firebaseapp.com",
@@ -42,57 +43,56 @@
   appId: "1:747364983701:web:27dcc036cea552975acc9c",
   measurementId: "G-4SZH9DJKEV"
 };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    // МЕТОД: АТОМАРНОЕ ОБНОВЛЕНИЕ (LIKES)
-    window.processLike = async (id) => {
-        const docRef = doc(db, "requests", id);
-        try {
-            await updateDoc(docRef, { likes: increment(1) });
-        } catch (e) {
-            console.error("Ошибка при лайке: ", e);
-        }
-    };
-  } catch (e) { console.error("Validation Error:", e.message); }
 };
 
-// МЕТОД: ЗАПИСЬ С ВАЛИДАЦИЕЙ
-document.getElementById('mainBtn').onclick = async () => {
-    const btn = document.getElementById('mainBtn');
-    btn.disabled = true;
-    try {
-        await addDoc(collection(db, "requests"), {
-            name: document.getElementById('name').value,
-            email: document.getElementById('email').value,
-            likes: 0,
-            timestamp: serverTimestamp()
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // МЕТОД: АТОМАРНОЕ ОБНОВЛЕНИЕ (LIKES)
+        window.processLike = async (id) => {
+            const docRef = doc(db, "requests", id);
+            try {
+                await updateDoc(docRef, { likes: increment(1) });
+            } catch (e) {
+                console.error("Validation Error:", e.message);
+            }
+        };
+
+        // МЕТОД: ЗАПИСЬ С ВАЛИДАЦИЕЙ
+        document.getElementById('mainBtn').onclick = async () => {
+            const btn = document.getElementById('mainBtn');
+            btn.disabled = true;
+            try {
+                await addDoc(collection(db, "requests"), {
+                    name: document.getElementById('name').value,
+                    email: document.getElementById('email').value,
+                    likes: 0,
+                    timestamp: serverTimestamp()
+                });
+                document.getElementById('email').value = "";
+            } catch (e) {
+                alert("Ошибка безопасности: Данные отклонены сервером.");
+            }
+            btn.disabled = false;
+        };
+
+        // МЕТОД: REAL-TIME СИНХРОНИЗАЦИЯ
+        const q = query(collection(db, "requests"), orderBy("timestamp", "desc"));
+        onSnapshot(q, (snapshot) => {
+            const feed = document.getElementById('feed');
+            feed.innerHTML = "";
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                feed.innerHTML += `
+                    <div class="post">
+                        <span class="time">${data.timestamp?.toDate().toLocaleTimeString() || '...'}</span>
+                        <b>${data.name}</b>
+                        <p style="margin: 5px 0;">${data.email}</p>
+                        <button class="like-btn" onclick="processLike('${doc.id}')">👍 ${data.likes || 0}</button>
+                    </div>
+                `;
+            });
         });
-        document.getElementById('email').value = "";
-    } catch (e) { 
-        alert("Ошибка безопасности: Данные отклонены сервером."); 
-    }
-    btn.disabled = false;
-};
-
-// МЕТОД: REAL-TIME СИНХРОНИЗАЦИЯ
-const q = query(collection(db, "requests"), orderBy("timestamp", "desc"));
-onSnapshot(q, (snapshot) => {
-    const feed = document.getElementById('feed');
-    feed.innerHTML = "";
-    snapshot.forEach((doc) => {
-        const data = doc.data();
-        feed.innerHTML += `
-            <div class="post">
-                <span class="time">${data.timestamp?.toDate().toLocaleTimeString() || '...'}</span>
-                <b>${data.name}</b>
-                <p style="margin: 5px 0;">${data.email}</p>
-                <button class="like-btn" onclick="processLike('${doc.id}')">👍 ${data.likes || 0}</button>
-            </div>
-        `;
-    });
-});
-</script>
+    </script>
 </body>
 </html>
