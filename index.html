@@ -11,13 +11,18 @@
         .user-avatar { width: 40px; height: 40px; border-radius: 50%; }
         input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
         button { background: #007bff; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        
+        /* Сообщения */
         .messages-box { height: 300px; overflow-y: auto; border: 1px solid #eee; padding: 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; background: #f9f9f9; border-radius: 8px; }
-        .msg { padding: 10px; border-radius: 10px; max-width: 80%; font-size: 14px; }
+        .msg { padding: 10px; border-radius: 10px; max-width: 80%; font-size: 14px; word-wrap: break-word; }
         .sent { background: #007bff; color: white; align-self: flex-end; }
         .received { background: #e4e6eb; color: black; align-self: flex-start; }
-        .user-card { padding: 10px; border: 1px solid #eee; margin-bottom: 5px; cursor: pointer; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
-        .user-card:hover { background: #f0f7ff; }
-        .user-card img { width: 30px; height: 30px; border-radius: 50%; }
+        
+        /* Список пользователей */
+        .user-card { padding: 12px; border: 1px solid #eee; margin-bottom: 8px; cursor: pointer; border-radius: 8px; display: flex; align-items: center; gap: 10px; transition: 0.2s; }
+        .user-card:hover { background: #f0f7ff; border-color: #007bff; }
+        .user-card img { width: 35px; height: 35px; border-radius: 50%; }
+        
         .chat-input-group { display: flex; gap: 5px; }
         .plane-btn { width: 60px; background: #007bff; font-size: 20px; padding: 0; display: flex; align-items: center; justify-content: center; }
     </style>
@@ -36,14 +41,14 @@
     <div id="mainContent" style="display: none; width: 100%; max-width: 500px;">
         <div class="container">
             <h3 style="margin-top:0">Выберите собеседника:</h3>
-            <div id="usersList">Загрузка пользователей...</div>
+            <div id="usersList">Загрузка активных пользователей...</div>
         </div>
 
         <div id="chatBox" class="container" style="display: none;">
             <h4 id="withWho" style="margin-top:0">Чат</h4>
             <div id="messagesDisplay" class="messages-box"></div>
             <div class="chat-input-group">
-                <input type="text" id="dmMsg" placeholder="Сообщение...">
+                <input type="text" id="dmMsg" placeholder="Введите сообщение...">
                 <button id="sendBtn" class="plane-btn">✈</button>
             </div>
         </div>
@@ -77,6 +82,7 @@
         let activeChatId = null;
         let chatUnsub = null;
 
+        // Авторизация и регистрация пользователя в базе
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 document.getElementById('userInfo').style.display = 'flex';
@@ -85,6 +91,7 @@
                 document.getElementById('userName').innerText = user.displayName;
                 document.getElementById('userPhoto').src = user.photoURL;
 
+                // Записываем данные в коллекцию users
                 await setDoc(doc(db, "users", user.uid), {
                     name: user.displayName,
                     photo: user.photoURL,
@@ -101,13 +108,15 @@
         document.getElementById('loginBtn').onclick = () => signInWithPopup(auth, provider);
         document.getElementById('logoutBtn').onclick = () => signOut(auth);
 
+        // Загрузка списка всех, кто зашел в приложение
         function loadUserList() {
             onSnapshot(collection(db, "users"), (snap) => {
                 const list = document.getElementById('usersList');
                 list.innerHTML = "";
                 snap.forEach(uDoc => {
                     const u = uDoc.data();
-                    if (u.uid === auth.currentUser.uid) return;
+                    if (u.uid === auth.currentUser.uid) return; // Себя не показываем
+                    
                     const div = document.createElement('div');
                     div.className = 'user-card';
                     div.innerHTML = `<img src="${u.photo}"> <span>${u.name}</span>`;
@@ -117,30 +126,49 @@
             });
         }
 
+        // Логика выбора собеседника и загрузки истории
         window.startChat = (targetId, targetName) => {
             const myId = auth.currentUser.uid;
+            
+            // Генерируем ID чата так, чтобы он был одинаковым для обоих (сортировка)
             activeChatId = myId < targetId ? myId + "_" + targetId : targetId + "_" + myId;
+            
             document.getElementById('chatBox').style.display = 'block';
             document.getElementById('withWho').innerText = "Чат с: " + targetName;
             
             if (chatUnsub) chatUnsub();
-            const q = query(collection(db, "dms"), where("chatId", "==", activeChatId), orderBy("timestamp", "asc"));
+
+            // Подписка на сообщения (уже с индексом)
+            const q = query(
+                collection(db, "dms"), 
+                where("chatId", "==", activeChatId), 
+                orderBy("timestamp", "asc")
+            );
+
             chatUnsub = onSnapshot(q, (snap) => {
                 const display = document.getElementById('messagesDisplay');
                 display.innerHTML = "";
                 snap.forEach(mDoc => {
                     const m = mDoc.data();
                     const side = m.sender === myId ? 'sent' : 'received';
-                    display.innerHTML += `<div class="msg ${side}">${m.text}</div>`;
+                    const div = document.createElement('div');
+                    div.className = `msg ${side}`;
+                    div.innerText = m.text;
+                    display.appendChild(div);
                 });
                 display.scrollTop = display.scrollHeight;
+            }, (err) => {
+                console.error("Ошибка чата:", err);
             });
         };
 
+        // Отправка сообщения по нажатию на самолет
         async function doSend() {
             const input = document.getElementById('dmMsg');
             const val = input.value.trim();
+            
             if (!val || !activeChatId) return;
+
             try {
                 await addDoc(collection(db, "dms"), {
                     chatId: activeChatId,
@@ -149,11 +177,14 @@
                     timestamp: serverTimestamp()
                 });
                 input.value = "";
-            } catch (e) { alert("Ошибка! Проверь правила (Rules) в Firebase."); }
+            } catch (e) {
+                console.error("Ошибка отправки:", e);
+            }
         }
 
         document.getElementById('sendBtn').onclick = doSend;
         document.getElementById('dmMsg').onkeyup = (e) => { if(e.key === 'Enter') doSend(); };
+
     </script>
 </body>
 </html>
